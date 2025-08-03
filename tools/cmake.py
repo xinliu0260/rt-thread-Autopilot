@@ -84,7 +84,7 @@ def GenerateCFiles(env, project, project_name):
             POST_ACTION = POST_ACTION.replace("string_to_replace", f"${{{cmake_var}}}")
     # replace the `$TARGET` with `${CMAKE_PROJECT_NAME}.elf`
     while "$TARGET" in POST_ACTION:
-        POST_ACTION = POST_ACTION.replace("$TARGET", "${CMAKE_PROJECT_NAME}.elf")
+        POST_ACTION = POST_ACTION.replace("$TARGET", "${TARGET_NAME}.elf")
     # add COMMAAND before each command
     POST_ACTION = POST_ACTION.split('\n')
     POST_ACTION = [each_line.strip() for each_line in POST_ACTION]
@@ -110,21 +110,21 @@ def GenerateCFiles(env, project, project_name):
         sys.exit(-1)
 
     with open("CMakeLists.txt", "w") as cm_file:
-        cm_file.write("CMAKE_MINIMUM_REQUIRED(VERSION 3.10)\n\n")
-
+        # cm_file.write("CMAKE_MINIMUM_REQUIRED(VERSION 3.10)\n\n")
+        cm_file.write("SET(TARGET_NAME "+rtconfig.TARGET_NAME+")\n")
         cm_file.write("SET(CMAKE_SYSTEM_NAME Generic)\n")
         cm_file.write("SET(CMAKE_SYSTEM_PROCESSOR " + rtconfig.CPU +")\n")
         cm_file.write("#SET(CMAKE_VERBOSE_MAKEFILE ON)\n\n")
         cm_file.write("SET(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n\n")
 
-        cm_file.write("SET(CMAKE_C_COMPILER \""+ CC + "\")\n")
-        cm_file.write("SET(CMAKE_ASM_COMPILER \""+ AS + "\")\n")
+        # cm_file.write("SET(CMAKE_C_COMPILER \""+ CC + "\")\n")
+        # cm_file.write("SET(CMAKE_ASM_COMPILER \""+ AS + "\")\n")
         cm_file.write("SET(CMAKE_C_FLAGS \""+ CFLAGS + "\")\n")
         cm_file.write("SET(CMAKE_ASM_FLAGS \""+ AFLAGS + "\")\n")
         cm_file.write("SET(CMAKE_C_COMPILER_WORKS TRUE)\n\n")
 
         if CXX != '':
-            cm_file.write("SET(CMAKE_CXX_COMPILER \""+ CXX + "\")\n")
+            # cm_file.write("SET(CMAKE_CXX_COMPILER \""+ CXX + "\")\n")
             cm_file.write("SET(CMAKE_CXX_FLAGS \""+ CXXFLAGS + "\")\n")
             cm_file.write("SET(CMAKE_CXX_COMPILER_WORKS TRUE)\n\n")
 
@@ -148,7 +148,7 @@ def GenerateCFiles(env, project, project_name):
                 if 'LIBS' in group.keys():
                     for f in group['LIBS']:
                         LINKER_LIBS += ' ' + f.replace("\\", "/") + '.lib'
-        cm_file.write("SET(CMAKE_EXE_LINKER_FLAGS \""+ re.sub(LINKER_FLAGS + '(\s*)', LINKER_FLAGS + ' ${CMAKE_SOURCE_DIR}/', LFLAGS) + LINKER_LIBS + "\")\n\n")
+        cm_file.write("SET(CMAKE_EXE_LINKER_FLAGS \""+ re.sub(LINKER_FLAGS + '(\s*)', LINKER_FLAGS + ' ${CMAKE_CURRENT_SOURCE_DIR}/', LFLAGS) + LINKER_LIBS + "\")\n\n")
 
         # get the c/cpp standard version from compilation flags
         # not support the version with alphabet in `-std` param yet
@@ -159,7 +159,7 @@ def GenerateCFiles(env, project, project_name):
             c_standard = "".join([each for each in c_standard if each.isdigit()])
         else:
             print(f"Cannot find the param of the c standard in build flag, set to default {c_standard}")
-        cm_file.write(f"SET(CMAKE_C_STANDARD {c_standard})\n")
+        #cm_file.write(f"SET(CMAKE_C_STANDARD {c_standard})\n")
 
         if CXX != '':
             cpp_standard = 17
@@ -168,25 +168,29 @@ def GenerateCFiles(env, project, project_name):
                 cpp_standard = "".join([each for each in cpp_standard if each.isdigit()])
             else:
                 print(f"Cannot find the param of the cpp standard in build flag, set to default {cpp_standard}")
-            cm_file.write(f"SET(CMAKE_CXX_STANDARD {cpp_standard})\n")
+            #cm_file.write(f"SET(CMAKE_CXX_STANDARD {cpp_standard})\n")
         
         cm_file.write('\n')
 
-        cm_file.write(f"PROJECT({PROJECT_NAME} C {'CXX' if CXX != '' else ''} ASM)\n")
-        
-        cm_file.write('\n')
+        # cm_file.write(f"PROJECT({PROJECT_NAME} C {'CXX' if CXX != '' else ''} ASM)\n")
 
-        cm_file.write("INCLUDE_DIRECTORIES(\n")
+        cm_file.write("ADD_EXECUTABLE(${TARGET_NAME}.elf)\n")
+        cm_file.write('\n')
+        cm_file.write("SET(COMMON_INCLUDE_DIR")
+
         for i in env['CPPPATH']:
             # use relative path
             path = _make_path_relative(os.getcwd(), i)
             cm_file.write( "\t" + path.replace("\\", "/") + "\n")
         cm_file.write(")\n\n")
+        cm_file.write("target_include_directories(${TARGET_NAME}.elf PUBLIC ${COMMON_INCLUDE_DIR})\n")
 
-        cm_file.write("ADD_DEFINITIONS(\n")
+        cm_file.write("SET(COMMON_DEFINITIONS \n")
         for i in env['CPPDEFINES']:
             cm_file.write("\t-D" + i + "\n")
         cm_file.write(")\n\n")
+
+        cm_file.write("target_compile_definitions(${TARGET_NAME}.elf PRIVATE ${COMMON_DEFINITIONS})\n")
 
         libgroups = []
         interfacelibgroups = []
@@ -264,14 +268,22 @@ def GenerateCFiles(env, project, project_name):
 
         cm_file.write("# Libraries\n")
         for group in libgroups:
-            cm_file.write("ADD_LIBRARY(rtt_{:s} OBJECT ${{RT_{:s}_SOURCES}})\n"
+            cm_file.write("ADD_LIBRARY("+rtconfig.TARGET_NAME+"-{:s} OBJECT ${{RT_{:s}_SOURCES}})\n"
                           .format(group['name'], group['name'].upper()))
+            cm_file.write("target_include_directories("+rtconfig.TARGET_NAME+"-{:s}".format(group['name'])
+                            + " PUBLIC ${COMMON_INCLUDE_DIR})\n")
+            cm_file.write("target_compile_definitions("+rtconfig.TARGET_NAME+"-{:s}".format(group['name'])
+                          + " PUBLIC ${COMMON_DEFINITIONS})\n\n")
 
         cm_file.write("\n")
 
         cm_file.write("# Interface libraries\n")
         for group in interfacelibgroups:
-            cm_file.write("ADD_LIBRARY(rtt_{:s} INTERFACE)\n".format(group['name']))
+            cm_file.write("ADD_LIBRARY("+rtconfig.TARGET_NAME+"-{:s} INTERFACE)\n".format(group['name']))
+            cm_file.write("target_include_directories("+rtconfig.TARGET_NAME+"-{:s}".format(group['name'])
+                            + " INTERFACE ${COMMON_INCLUDE_DIR})\n")
+            cm_file.write("target_compile_definitions("+rtconfig.TARGET_NAME+"-{:s}".format(group['name'])
+                          + " INTERFACE ${COMMON_DEFINITIONS})\n\n")
 
         cm_file.write("\n")
 
@@ -283,7 +295,7 @@ def GenerateCFiles(env, project, project_name):
             if len(group['LOCAL_CPPDEFINES']) == 0:
                 continue
 
-            cm_file.write("TARGET_COMPILE_DEFINITIONS(rtt_{:s} PRIVATE ${{RT_{:s}_DEFINES}})\n"
+            cm_file.write("TARGET_COMPILE_DEFINITIONS("+rtconfig.TARGET_NAME+"-{:s} PRIVATE ${{RT_{:s}_DEFINES}})\n"
               .format(group['name'], group['name'].upper()))
 
         cm_file.write("\n")
@@ -297,7 +309,7 @@ def GenerateCFiles(env, project, project_name):
                 if len(group['LIBPATH']) == 0:
                     continue
 
-                cm_file.write("TARGET_LINK_DIRECTORIES(rtt_{:s} INTERFACE ${{RT_{:s}_LINK_DIRS}})\n"
+                cm_file.write("TARGET_LINK_DIRECTORIES("+rtconfig.TARGET_NAME+"-{:s} INTERFACE ${{RT_{:s}_LINK_DIRS}})\n"
                               .format(group['name'], group['name'].upper()))
 
             for group in libgroups:
@@ -307,19 +319,19 @@ def GenerateCFiles(env, project, project_name):
                 if len(group['LIBS']) == 0:
                     continue
 
-                cm_file.write("TARGET_LINK_LIBRARIES(rtt_{:s} INTERFACE ${{RT_{:s}_LIBS}})\n"
+                cm_file.write("TARGET_LINK_LIBRARIES("+rtconfig.TARGET_NAME+"-{:s} INTERFACE ${{RT_{:s}_LIBS}})\n"
                               .format(group['name'], group['name'].upper()))
 
         cm_file.write("\n")
 
-        cm_file.write("ADD_EXECUTABLE(${CMAKE_PROJECT_NAME}.elf ${RT_APPLICATIONS_SOURCES})\n")
+        cm_file.write("target_sources(${TARGET_NAME}.elf PUBLIC ${RT_APPLICATIONS_SOURCES})\n")
 
-        cm_file.write("TARGET_LINK_LIBRARIES(${CMAKE_PROJECT_NAME}.elf\n")
+        cm_file.write("TARGET_LINK_LIBRARIES(${TARGET_NAME}.elf PUBLIC \n")
         for group in libgroups + interfacelibgroups:
-            cm_file.write("\trtt_{:s}\n".format(group['name']))
+            cm_file.write("\t"+rtconfig.TARGET_NAME+"-{:s}\n".format(group['name']))
         cm_file.write(")\n\n")
 
-        cm_file.write("ADD_CUSTOM_COMMAND(TARGET ${CMAKE_PROJECT_NAME}.elf POST_BUILD \n" + POST_ACTION + '\n)\n')
+        cm_file.write("ADD_CUSTOM_COMMAND(TARGET ${TARGET_NAME}.elf POST_BUILD \n" + POST_ACTION + '\n)\n')
 
         # auto inclue `custom.cmake` for user custom settings
         custom_cmake = \
