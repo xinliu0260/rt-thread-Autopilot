@@ -5,16 +5,17 @@ import os
 
 cwd = GetCurrentDir()
 group = []
-src = ['drv_common.c']
-path = [cwd]
-
+# src = ['drv_common.c']
+# path = [cwd]
+src = []
+path = []
 if not GetDepend('PKG_USING_CMSIS_CORE'):
     path += [os.path.join(cwd, 'CMSIS', 'Include')]
 
-if GetDepend(['RT_USING_NANO']):
-    group = group + SConscript(os.path.join(cwd, 'nano', 'SConscript'))
-else:
-    group = group + SConscript(os.path.join(cwd, 'drivers', 'SConscript'))
+# if GetDepend(['RT_USING_NANO']):
+#     group = group + SConscript(os.path.join(cwd, 'nano', 'SConscript'))
+# else:
+#     group = group + SConscript(os.path.join(cwd, 'drivers', 'SConscript'))
 
 group = group + DefineGroup('Drivers', src, depend = [''], CPPPATH = path)
 
